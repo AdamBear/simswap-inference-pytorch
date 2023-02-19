@@ -214,6 +214,7 @@ class SimSwap:
         return align_imgs, transforms, detection.score
 
     def set_id_image(self, id_image: np.ndarray) -> None:
+        self.id_image = id_image
         self.align_id_imgs, self.id_transforms, _ = self.run_detect_align(
             self.id_image, for_id=True
         )
