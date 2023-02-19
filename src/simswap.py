@@ -223,7 +223,7 @@ class SimSwap:
             self.align_id_imgs, normalize=True
         )
 
-    def __call__(self, att_image: np.ndarray) -> np.ndarray:
+    def __call__(self, att_image: np.ndarray, weight=0.5) -> np.ndarray:
         if self.id_latent is None:
             align_id_imgs, id_transforms, _ = self.run_detect_align(
                 self.id_image, for_id=True
@@ -277,7 +277,7 @@ class SimSwap:
         swapped_img: torch.Tensor = self.simswap_net(align_att_imgs, self.id_latent)
 
         if self.enhance_output:
-            swapped_img = self.gfpgan_net.enhance(swapped_img, weight=0.5)
+            swapped_img = self.gfpgan_net.enhance(swapped_img, weight=weight)
 
         # Put all crops/transformations into a batch
         align_att_img_batch_for_parsing_model: torch.Tensor = torch.stack(
