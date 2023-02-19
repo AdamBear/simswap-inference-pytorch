@@ -29,7 +29,7 @@ class FaceDetector:
 
     def __call__(self, img: np.ndarray, max_num: int = 0) -> Detection:
         bboxes, kpss = self.handler.detect(
-            img, threshold=self.det_thresh, max_num=max_num, metric="default"
+            img, max_num=max_num, metric="default"
         )
         if bboxes.shape[0] == 0:
             return Detection(None, None, None)
