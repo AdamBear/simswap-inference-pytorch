@@ -39,6 +39,9 @@ class SimSwap:
         self.face_detector_threshold: Union[float, None] = None
         self.specific_latent_match_threshold: Union[float, None] = None
         self.device = torch.device(config.device)
+        self.align_id_imgs = None
+        self.id_transforms = None
+
 
         self.set_parameters(config)
 
@@ -209,6 +212,15 @@ class SimSwap:
         )
 
         return align_imgs, transforms, detection.score
+
+    def set_id_image(self, id_image: np.ndarray) -> None:
+        self.align_id_imgs, self.id_transforms, _ = self.run_detect_align(
+            self.id_image, for_id=True
+        )
+        # normalize=True, because official SimSwap model trained with normalized id_lattent
+        self.id_latent: torch.Tensor = self.face_id_net(
+            self.align_id_imgs, normalize=True
+        )
 
     def __call__(self, att_image: np.ndarray) -> np.ndarray:
         if self.id_latent is None:
