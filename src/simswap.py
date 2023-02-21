@@ -214,17 +214,18 @@ class SimSwap:
         return align_imgs, transforms, detection.score
 
     def set_id_image(self, id_image: np.ndarray) -> None:
-        self.id_image = id_image
-        self.align_id_imgs, self.id_transforms, _ = self.run_detect_align(
-            self.id_image, for_id=True
-        )
-        # normalize=True, because official SimSwap model trained with normalized id_lattent
-        self.id_latent: torch.Tensor = self.face_id_net(
-            self.align_id_imgs, normalize=True
-        )
+        if id_image is not None:
+            self.id_image = id_image
+            self.align_id_imgs, self.id_transforms, _ = self.run_detect_align(
+                self.id_image, for_id=True
+            )
+            # normalize=True, because official SimSwap model trained with normalized id_lattent
+            self.id_latent: torch.Tensor = self.face_id_net(
+                self.align_id_imgs, normalize=True
+            )
 
     def __call__(self, att_image: np.ndarray, weight=0.5) -> np.ndarray:
-        if self.id_latent is None:
+        if self.id_latent is None and self.id_image is not None:
             align_id_imgs, id_transforms, _ = self.run_detect_align(
                 self.id_image, for_id=True
             )
@@ -274,7 +275,10 @@ class SimSwap:
             else:
                 return att_image
 
-        swapped_img: torch.Tensor = self.simswap_net(align_att_imgs, self.id_latent)
+        if self.id_image is None:
+            swapped_img = align_att_imgs
+        else:
+            swapped_img: torch.Tensor = self.simswap_net(align_att_imgs, self.id_latent)
 
         if self.enhance_output:
             swapped_img = self.gfpgan_net.enhance(swapped_img, weight=weight)
