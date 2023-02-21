@@ -278,10 +278,11 @@ class SimSwap:
                 return att_image
 
         if self.id_image is None:
-            x = [self.to_tensor(_) for _ in align_att_imgs]
-            x = torch.stack(x, dim=0)
-            x = x.to(self.device)
-            swapped_img = x
+            align_att_img_batch: torch.Tensor = torch.stack(
+                [self.to_tensor(x) for x in align_att_imgs], dim=0
+            )
+            align_att_img_batch = align_att_img_batch.to(self.device, non_blocking=True)
+            swapped_img = align_att_img_batch
         else:
             swapped_img: torch.Tensor = self.simswap_net(align_att_imgs, self.id_latent)
 
@@ -300,11 +301,6 @@ class SimSwap:
             [torch.tensor(x).float() for x in att_transforms], dim=0
         )
         att_transforms = att_transforms.to(self.device, non_blocking=True)
-
-        align_att_img_batch: torch.Tensor = torch.stack(
-            [self.to_tensor(x) for x in align_att_imgs], dim=0
-        )
-        align_att_img_batch = align_att_img_batch.to(self.device, non_blocking=True)
 
         # Get face masks for the attribute image
         face_mask, ignore_mask_ids = self.bise_net.get_mask(
