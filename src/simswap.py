@@ -280,6 +280,7 @@ class SimSwap:
         if self.id_image is None:
             x = [self.to_tensor(_) for _ in align_att_imgs]
             x = torch.stack(x, dim=0)
+            x = x.to(self.device)
             swapped_img = x
         else:
             swapped_img: torch.Tensor = self.simswap_net(align_att_imgs, self.id_latent)
