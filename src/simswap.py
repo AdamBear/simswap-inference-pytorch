@@ -223,6 +223,8 @@ class SimSwap:
             self.id_latent: torch.Tensor = self.face_id_net(
                 self.align_id_imgs, normalize=True
             )
+        else:
+            self.id_image = None
 
     def __call__(self, att_image: np.ndarray, weight=0.5) -> np.ndarray:
         if self.id_latent is None and self.id_image is not None:
