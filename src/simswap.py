@@ -278,7 +278,7 @@ class SimSwap:
                 return att_image
 
         if self.id_image is None:
-            swapped_img = align_att_imgs
+            swapped_img = att_image
         else:
             swapped_img: torch.Tensor = self.simswap_net(align_att_imgs, self.id_latent)
 
