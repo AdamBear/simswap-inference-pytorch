@@ -277,11 +277,12 @@ class SimSwap:
             else:
                 return att_image
 
+        align_att_img_batch: torch.Tensor = torch.stack(
+            [self.to_tensor(x) for x in align_att_imgs], dim=0
+        )
+        align_att_img_batch = align_att_img_batch.to(self.device, non_blocking=True)
+
         if self.id_image is None:
-            align_att_img_batch: torch.Tensor = torch.stack(
-                [self.to_tensor(x) for x in align_att_imgs], dim=0
-            )
-            align_att_img_batch = align_att_img_batch.to(self.device, non_blocking=True)
             swapped_img = align_att_img_batch
         else:
             swapped_img: torch.Tensor = self.simswap_net(align_att_imgs, self.id_latent)
