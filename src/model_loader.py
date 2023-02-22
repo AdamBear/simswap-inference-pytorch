@@ -66,6 +66,13 @@ def get_model(
                 map_location="cpu",
             )
 
+        if 'params_ema' in state_dict:
+            keyname = 'params_ema'
+            state_dict = state_dict[keyname]
+        elif 'params' in state_dict:
+            keyname = 'params'
+            state_dict = state_dict[keyname]
+
         model.load_state_dict(state_dict)
 
         model.to(device)
