@@ -331,7 +331,7 @@ class GFPGANer(GFPGANv1Clean):
         n, c, h, w = img.shape
         img = F.interpolate(img, size=(512, 512), mode="bilinear")
 
-        img = (img - 0.5) / 0.5
+        # img = (img - 0.5) / 0.5
 
         try:
             restored_faces = self.forward(img, return_rgb=False, weight=weight)[0]
