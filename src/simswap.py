@@ -45,11 +45,11 @@ class SimSwap:
 
         self.set_parameters(config)
 
-        self.use_erosion = True
+        self.use_erosion = False
         if self.erode_mask_value == 0:
             self.use_erosion = False
 
-        self.use_blur = True
+        self.use_blur = False
         if self.smooth_mask_value == 0:
             self.use_erosion = False
 
