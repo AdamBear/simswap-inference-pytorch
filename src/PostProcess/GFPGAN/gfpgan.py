@@ -2,6 +2,7 @@ import math
 import random
 import torch
 import torch.nn.functional as F
+from torch import nn
 
 from src.PostProcess.GFPGAN.stylegan2 import StyleGAN2GeneratorClean
 
@@ -143,9 +144,10 @@ class ResBlock(torch.nn.Module):
         return out
 
 
-@ARCH_REGISTRY.register()
-class GFPGANv1(nn.Module):
+class GFPGANv1Clean(nn.Module):
     """The GFPGAN architecture: Unet + StyleGAN2 decoder with SFT.
+
+    It is the clean version without custom compiled CUDA extensions used in StyleGAN2.
 
     Ref: GFP-GAN: Towards Real-World Blind Face Restoration with Generative Facial Prior.
 
@@ -153,13 +155,10 @@ class GFPGANv1(nn.Module):
         out_size (int): The spatial size of outputs.
         num_style_feat (int): Channel number of style features. Default: 512.
         channel_multiplier (int): Channel multiplier for large networks of StyleGAN2. Default: 2.
-        resample_kernel (list[int]): A list indicating the 1D resample kernel magnitude. A cross production will be
-            applied to extent 1D resample kernel to 2D resample kernel. Default: (1, 3, 3, 1).
         decoder_load_path (str): The path to the pre-trained decoder model (usually, the StyleGAN2). Default: None.
         fix_decoder (bool): Whether to fix the decoder. Default: True.
 
         num_mlp (int): Layer number of MLP style layers. Default: 8.
-        lr_mlp (float): Learning rate multiplier for mlp layers. Default: 0.01.
         input_is_latent (bool): Whether input is latent style. Default: False.
         different_w (bool): Whether to use different latent w for different layers. Default: False.
         narrow (float): The narrow ratio for channels. Default: 1.
@@ -171,18 +170,16 @@ class GFPGANv1(nn.Module):
             out_size,
             num_style_feat=512,
             channel_multiplier=1,
-            resample_kernel=(1, 3, 3, 1),
             decoder_load_path=None,
             fix_decoder=True,
             # for stylegan decoder
             num_mlp=8,
-            lr_mlp=0.01,
             input_is_latent=False,
             different_w=False,
             narrow=1,
             sft_half=False):
 
-        super(GFPGANv1, self).__init__()
+        super(GFPGANv1Clean, self).__init__()
         self.input_is_latent = input_is_latent
         self.different_w = different_w
         self.num_style_feat = num_style_feat
@@ -203,47 +200,44 @@ class GFPGANv1(nn.Module):
         self.log_size = int(math.log(out_size, 2))
         first_out_size = 2**(int(math.log(out_size, 2)))
 
-        self.conv_body_first = ConvLayer(3, channels[f'{first_out_size}'], 1, bias=True, activate=True)
+        self.conv_body_first = nn.Conv2d(3, channels[f'{first_out_size}'], 1)
 
         # downsample
         in_channels = channels[f'{first_out_size}']
         self.conv_body_down = nn.ModuleList()
         for i in range(self.log_size, 2, -1):
             out_channels = channels[f'{2**(i - 1)}']
-            self.conv_body_down.append(ResBlock(in_channels, out_channels, resample_kernel))
+            self.conv_body_down.append(ResBlock(in_channels, out_channels, mode='down'))
             in_channels = out_channels
 
-        self.final_conv = ConvLayer(in_channels, channels['4'], 3, bias=True, activate=True)
+        self.final_conv = nn.Conv2d(in_channels, channels['4'], 3, 1, 1)
 
         # upsample
         in_channels = channels['4']
         self.conv_body_up = nn.ModuleList()
         for i in range(3, self.log_size + 1):
             out_channels = channels[f'{2**i}']
-            self.conv_body_up.append(ResUpBlock(in_channels, out_channels))
+            self.conv_body_up.append(ResBlock(in_channels, out_channels, mode='up'))
             in_channels = out_channels
 
         # to RGB
         self.toRGB = nn.ModuleList()
         for i in range(3, self.log_size + 1):
-            self.toRGB.append(EqualConv2d(channels[f'{2**i}'], 3, 1, stride=1, padding=0, bias=True, bias_init_val=0))
+            self.toRGB.append(nn.Conv2d(channels[f'{2**i}'], 3, 1))
 
         if different_w:
             linear_out_channel = (int(math.log(out_size, 2)) * 2 - 2) * num_style_feat
         else:
             linear_out_channel = num_style_feat
 
-        self.final_linear = EqualLinear(
-            channels['4'] * 4 * 4, linear_out_channel, bias=True, bias_init_val=0, lr_mul=1, activation=None)
+        self.final_linear = nn.Linear(channels['4'] * 4 * 4, linear_out_channel)
 
         # the decoder: stylegan2 generator with SFT modulations
-        self.stylegan_decoder = StyleGAN2GeneratorSFT(
+        self.stylegan_decoder = StyleGAN2GeneratorCSFT(
             out_size=out_size,
             num_style_feat=num_style_feat,
             num_mlp=num_mlp,
             channel_multiplier=channel_multiplier,
-            resample_kernel=resample_kernel,
-            lr_mlp=lr_mlp,
             narrow=narrow,
             sft_half=sft_half)
 
@@ -267,17 +261,15 @@ class GFPGANv1(nn.Module):
                 sft_out_channels = out_channels * 2
             self.condition_scale.append(
                 nn.Sequential(
-                    EqualConv2d(out_channels, out_channels, 3, stride=1, padding=1, bias=True, bias_init_val=0),
-                    ScaledLeakyReLU(0.2),
-                    EqualConv2d(out_channels, sft_out_channels, 3, stride=1, padding=1, bias=True, bias_init_val=1)))
+                    nn.Conv2d(out_channels, out_channels, 3, 1, 1), nn.LeakyReLU(0.2, True),
+                    nn.Conv2d(out_channels, sft_out_channels, 3, 1, 1)))
             self.condition_shift.append(
                 nn.Sequential(
-                    EqualConv2d(out_channels, out_channels, 3, stride=1, padding=1, bias=True, bias_init_val=0),
-                    ScaledLeakyReLU(0.2),
-                    EqualConv2d(out_channels, sft_out_channels, 3, stride=1, padding=1, bias=True, bias_init_val=0)))
+                    nn.Conv2d(out_channels, out_channels, 3, 1, 1), nn.LeakyReLU(0.2, True),
+                    nn.Conv2d(out_channels, sft_out_channels, 3, 1, 1)))
 
     def forward(self, x, return_latents=False, return_rgb=True, randomize_noise=True, **kwargs):
-        """Forward function for GFPGANv1.
+        """Forward function for GFPGANv1Clean.
 
         Args:
             x (Tensor): Input images.
@@ -290,12 +282,11 @@ class GFPGANv1(nn.Module):
         out_rgbs = []
 
         # encoder
-        feat = self.conv_body_first(x)
+        feat = F.leaky_relu_(self.conv_body_first(x), negative_slope=0.2)
         for i in range(self.log_size - 2):
             feat = self.conv_body_down[i](feat)
             unet_skips.insert(0, feat)
-
-        feat = self.final_conv(feat)
+        feat = F.leaky_relu_(self.final_conv(feat), negative_slope=0.2)
 
         # style code
         style_code = self.final_linear(feat.view(feat.size(0), -1))
@@ -325,7 +316,6 @@ class GFPGANv1(nn.Module):
                                          randomize_noise=randomize_noise)
 
         return image, out_rgbs
-
 
 class GFPGANer(GFPGANv1Clean):
     """Helper for restoration with GFPGAN."""
